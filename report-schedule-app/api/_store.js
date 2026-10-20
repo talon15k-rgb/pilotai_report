@@ -7,10 +7,31 @@ const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const MAX_BODY = 256 * 1024;
 const KEY_PREFIX = 'rsm:';
 
+// Upstash 연동은 접두어를 붙여 환경변수를 넣을 수 있음 (예: STORAGE_KV_REST_API_URL)
+// → 기본 이름을 먼저 보고, 없으면 같은 접두어의 URL/TOKEN 쌍을 찾음
+const PAIRS = [
+  ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
+  ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+  ['REDIS_REST_API_URL', 'REDIS_REST_API_TOKEN'],
+];
 function redisConfig() {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url: url.replace(/\/+$/, ''), token } : null;
+  const env = process.env;
+  for (const [u, t] of PAIRS) {
+    if (env[u] && env[t]) return { url: env[u].replace(/\/+$/, ''), token: env[t] };
+  }
+  for (const key of Object.keys(env)) {
+    for (const [u, t] of PAIRS) {
+      if (key.endsWith('_' + u)) {
+        const tokenKey = key.slice(0, -u.length) + t;
+        if (env[key] && env[tokenKey]) return { url: env[key].replace(/\/+$/, ''), token: env[tokenKey] };
+      }
+    }
+  }
+  return null;
+}
+// 저장소 미연결 진단용: 관련 환경변수 "이름"만 (값은 절대 포함하지 않음)
+function storageEnvNames() {
+  return Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k)).sort();
 }
 
 async function redis(command) {
@@ -46,7 +67,7 @@ function send(res, status, obj) {
 }
 
 function fail(res, e) {
-  if (e && e.code === 'no_storage') return send(res, 503, { error: 'no_storage' });
+  if (e && e.code === 'no_storage') return send(res, 503, { error: 'no_storage', envNames: storageEnvNames() });
   console.error(e);
   return send(res, 500, { error: 'server' });
 }
