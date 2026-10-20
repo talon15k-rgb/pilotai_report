@@ -1,0 +1,1123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>보고 일정 보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: sticky header with role + sync; plan screen = 3 columns (미배치 | 09–18 시간표 | 결재판); intake screen = 2 forms with lists */
+:root {
+  --paper: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --ink: #18202c;
+  --muted: #5b6676;
+  --line: #d9dee6;
+  --line-faint: #eceff4;
+  --accent: #1f5b86;        /* 배치됨: 결재 잉크 */
+  --accent-soft: #e3edf6;
+  --seal: #b8322a;          /* 확정: 도장 */
+  --seal-soft: #f8e6e3;
+  --amber: #a5670f;         /* 변경 요청 / 경고 */
+  --amber-soft: #fbf0dc;
+  --green: #2f6f48;         /* 확인 완료 / 완료 */
+  --green-soft: #e2f0e6;
+  --fixed: #e4e7ec;
+  --fixed-2: #d8dce3;
+  --fixed-ink: #4c5563;
+  --backdrop: rgba(16, 22, 32, .38);
+  --shadow: 0 8px 28px rgba(20, 30, 45, .14);
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --slot: 22px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12161d; --surface: #1a2029; --surface-2: #1f2631; --ink: #e5e9ef; --muted: #9aa5b5;
+    --line: #2f3845; --line-faint: #242b36; --accent: #7fb3dc; --accent-soft: #1d3346;
+    --seal: #ef7d71; --seal-soft: #3d2220; --amber: #e5ad55; --amber-soft: #3a2d17;
+    --green: #7cc595; --green-soft: #1d3326; --fixed: #262d38; --fixed-2: #2d3542; --fixed-ink: #aab3c0;
+    --backdrop: rgba(0,0,0,.55); --shadow: 0 8px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12161d; --surface: #1a2029; --surface-2: #1f2631; --ink: #e5e9ef; --muted: #9aa5b5;
+  --line: #2f3845; --line-faint: #242b36; --accent: #7fb3dc; --accent-soft: #1d3346;
+  --seal: #ef7d71; --seal-soft: #3d2220; --amber: #e5ad55; --amber-soft: #3a2d17;
+  --green: #7cc595; --green-soft: #1d3326; --fixed: #262d38; --fixed-2: #2d3542; --fixed-ink: #aab3c0;
+  --backdrop: rgba(0,0,0,.55); --shadow: 0 8px 28px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- header ---------- */
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.seal-mark {
+  width: 28px; height: 28px; border: 2px solid var(--seal); color: var(--seal); border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; transform: rotate(-8deg);
+}
+.tabs, .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tabs button, .seg button { border: 0; background: transparent; padding: 6px 14px; cursor: pointer; color: var(--muted); }
+.tabs button + button, .seg button + button { border-left: 1px solid var(--line); }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.role { display: flex; align-items: center; gap: 8px; }
+.label-sm { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.sync { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.sync-info { font-size: 12px; color: var(--muted); }
+
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 6px 12px;
+  cursor: pointer; white-space: nowrap; line-height: 1.3;
+}
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: .42; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.seal { background: var(--seal); border-color: var(--seal); color: var(--surface); }
+.btn.warn { border-color: var(--amber); color: var(--amber); }
+.btn.danger { color: var(--seal); }
+.btn.danger.armed { background: var(--seal); color: var(--surface); border-color: var(--seal); }
+.btn.sm { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+
+.banner {
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 8px; font-size: 13px; background: var(--amber-soft); color: var(--amber); border-bottom: 1px solid var(--line);
+}
+
+main {
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 48px; max-width: 1480px; margin: 0 auto;
+}
+
+/* ---------- day bar + summary ---------- */
+.daybar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.day-title { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-right: 6px; text-wrap: balance; }
+.day-rel { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--ink); color: var(--surface); vertical-align: 3px; margin-left: 6px; }
+.daybar input[type="date"] { border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; background: var(--surface); }
+.daybar .spacer { flex: 1; }
+
+.summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+.metric { background: var(--surface); padding: 12px 16px; min-width: 0; }
+.metric .k { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.metric .v { font-size: 22px; font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.metric .v small { font-size: 13px; font-weight: 500; color: var(--muted); font-family: var(--font-body); margin-left: 2px; }
+.metric .s { font-size: 12px; color: var(--muted); }
+.metric.focus { background: var(--accent-soft); }
+.metric.focus .v { color: var(--accent); }
+.metric.ok .v { color: var(--green); }
+.metric.pending .v { color: var(--amber); }
+
+/* ---------- board ---------- */
+.board { display: grid; grid-template-columns: 270px minmax(0, 1fr) 270px; gap: 16px; align-items: start; }
+.col { min-width: 0; }
+.col-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 8px; }
+.col-head h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.col-head .count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.side { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px; }
+.group-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); margin-top: 6px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.card.draggable { cursor: grab; }
+.card.change { border-color: var(--amber); background: var(--amber-soft); }
+.card .ttl { font-weight: 600; cursor: pointer; overflow-wrap: anywhere; }
+.card .ttl:hover { text-decoration: underline; }
+.card .meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.card .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.card select { border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; background: var(--surface); font-family: var(--font-mono); font-size: 12px; }
+.card .note-preview { font-size: 12px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding-left: 8px; }
+.card.checked { opacity: .72; }
+.card.checked .ttl { text-decoration: line-through; text-decoration-color: var(--muted); }
+.check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.check input { width: 16px; height: 16px; accent-color: var(--green); }
+
+.pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; border: 1px solid currentColor; line-height: 1.5; white-space: nowrap; }
+.st-대기 { color: var(--muted); }
+.st-배치됨 { color: var(--accent); }
+.st-확정 { color: var(--seal); }
+.st-변경요청 { color: var(--amber); }
+.st-완료 { color: var(--green); }
+.st-결재판 { color: var(--accent); }
+.st-확인완료 { color: var(--green); }
+.type-tag { font-size: 11px; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 0 5px; }
+
+.empty { border: 1px dashed var(--line); border-radius: 9px; padding: 14px; font-size: 13px; color: var(--muted); text-align: center; }
+
+/* ---------- timeline ---------- */
+.tl-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 12px 0; }
+.tl { position: relative; margin-left: 58px; height: calc(var(--slot) * 54);
+  background:
+    repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px calc(var(--slot) * 6)),
+    repeating-linear-gradient(to bottom, var(--line-faint) 0 1px, transparent 1px var(--slot));
+  border-bottom: 1px solid var(--line);
+}
+.tl.dragover { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.hour { position: absolute; left: -54px; width: 46px; text-align: right; transform: translateY(-50%); font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.blk { position: absolute; border-radius: 6px; overflow: hidden; font-size: 12px; line-height: 1.3; }
+.blk.fixed {
+  left: 0; right: 0; z-index: 1; color: var(--fixed-ink); padding: 4px 10px;
+  background: repeating-linear-gradient(135deg, var(--fixed) 0 7px, var(--fixed-2) 7px 14px);
+  border: 1px solid var(--fixed-2);
+}
+.blk.fixed b { font-weight: 600; }
+.blk.lunch { background: var(--fixed); border-style: dashed; }
+.blk.rep {
+  z-index: 3; background: var(--accent-soft); border: 1px solid var(--accent); border-left-width: 4px; color: var(--ink);
+  padding: 2px 6px; display: flex; align-items: flex-start; gap: 6px; cursor: pointer;
+}
+.blk.rep.sched-drag { cursor: grab; }
+.blk.rep .t { font-family: var(--font-mono); font-size: 11px; color: var(--accent); white-space: nowrap; padding-top: 1px; }
+.blk.rep .body { flex: 1; min-width: 0; }
+.blk.rep .name, .blk.rep .sub { display: block; }
+.blk.rep .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk.rep .sub { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk.rep .acts { display: flex; gap: 4px; flex-shrink: 0; }
+.blk.rep .acts .btn { padding: 0 6px; font-size: 11px; line-height: 16px; }
+.blk.rep.confirmed { background: var(--seal-soft); border-color: var(--seal); }
+.blk.rep.confirmed .t { color: var(--seal); }
+.blk.rep.change { background: var(--amber-soft); border-color: var(--amber); border-style: dashed; border-left-style: solid; }
+.blk.rep.change .t { color: var(--amber); }
+.blk.rep.done { background: var(--green-soft); border-color: var(--green); opacity: .8; }
+.blk.rep.done .t { color: var(--green); }
+.blk.rep.conflict { box-shadow: inset 0 0 0 1px var(--amber); }
+.stamp {
+  flex-shrink: 0; align-self: center; font-size: 10px; font-weight: 700; color: var(--seal); border: 1.5px solid var(--seal);
+  border-radius: 4px; padding: 0 4px; transform: rotate(-6deg); letter-spacing: .05em;
+}
+.warn-dot { flex-shrink: 0; align-self: center; width: 16px; height: 16px; border-radius: 50%; background: var(--amber); color: var(--surface); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.drop-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 5; pointer-events: none; }
+.drop-line span { position: absolute; left: -54px; top: -9px; background: var(--accent); color: var(--surface); font-family: var(--font-mono); font-size: 11px; padding: 0 4px; border-radius: 3px; }
+.tl-empty { position: absolute; left: 12%; right: 12%; top: calc(var(--slot) * 7); z-index: 2; background: var(--surface); }
+.tl-hint { font-size: 12px; color: var(--muted); margin: 8px 0 0 58px; }
+
+/* ---------- intake ---------- */
+.intake { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.panel h2 { margin: 0 0 12px; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.panel h2 .edit-flag { font-size: 12px; font-weight: 600; color: var(--amber); margin-left: 8px; }
+.form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field.w2 { grid-column: span 2; }
+.field.w4 { grid-column: 1 / -1; }
+.field label, .field .lbl { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.field label .req { color: var(--seal); margin-left: 2px; }
+.field input, .field select, .field textarea {
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; background: var(--surface-2); width: 100%; min-width: 0;
+}
+.field textarea { resize: vertical; min-height: 60px; }
+.radio-row { display: flex; gap: 6px; }
+.radio-row label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 6px; cursor: pointer; color: var(--ink); font-size: 13px; }
+.radio-row input { accent-color: var(--accent); }
+.radio-row label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.form-actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+.form-msg { font-size: 12px; color: var(--seal); }
+.hint { font-size: 12px; color: var(--muted); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 8px; }
+.filters input, .filters select { border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; background: var(--surface); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 9px; text-align: left; border-bottom: 1px solid var(--line-faint); vertical-align: top; }
+th { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; background: var(--surface-2); white-space: nowrap; }
+td.num, td.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .note { color: var(--muted); max-width: 220px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+tr.editing td { background: var(--amber-soft); }
+tr.past td { color: var(--muted); }
+.row-acts { display: flex; gap: 4px; white-space: nowrap; }
+
+/* ---------- drawer ---------- */
+.scrim { position: fixed; inset: 0; background: var(--backdrop); z-index: 40; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); z-index: 41;
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow);
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 18px;
+  overflow: auto; display: flex; flex-direction: column; gap: 14px;
+}
+.drawer h2 { margin: 0; font-size: 18px; letter-spacing: -.01em; overflow-wrap: anywhere; text-wrap: balance; }
+.dr-head { display: flex; align-items: flex-start; gap: 10px; }
+.dr-head h2 { flex: 1; }
+.kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 10px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.act-group { border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.act-group.inactive { background: var(--surface-2); }
+.act-group h4 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .04em; display: flex; justify-content: space-between; }
+.act-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.act-row select, .act-row input[type="text"] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: var(--surface); min-width: 0; }
+.act-row input[type="text"] { flex: 1; }
+.warnbox { background: var(--amber-soft); border: 1px solid var(--amber); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.warnbox b { color: var(--amber); }
+.warnbox ul { margin: 4px 0 0; padding-left: 18px; }
+.drawer textarea { width: 100%; min-height: 110px; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: var(--surface-2); resize: vertical; }
+
+/* ---------- dialog + toast ---------- */
+.dialog {
+  position: fixed; z-index: 51; left: 50%; top: 22%; transform: translateX(-50%); width: min(460px, calc(100% - 32px));
+  background: var(--surface); border: 1px solid var(--amber); border-radius: 12px; box-shadow: var(--shadow); padding: 18px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.dialog h3 { margin: 0; font-size: 16px; color: var(--amber); }
+.dialog ul { margin: 0; padding-left: 18px; }
+.dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.scrim.top { z-index: 50; }
+.toast {
+  position: fixed; z-index: 60; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--surface); padding: 8px 16px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow);
+  max-width: calc(100% - 32px);
+}
+
+@media (max-width: 1100px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; max-height: none; }
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary .metric:last-child { grid-column: 1 / -1; }
+  .intake { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sync { margin-left: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .drawer { animation: slidein .16s ease-out; }
+  @keyframes slidein { from { transform: translateX(24px); opacity: .6; } }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="seal-mark" aria-hidden="true">報</span>보고 일정 보드</div>
+  <nav class="tabs" aria-label="화면">
+    <button type="button" id="tabPlanBtn" data-tab="plan">일정 확정</button>
+    <button type="button" id="tabIntakeBtn" data-tab="intake">보고 접수</button>
+  </nav>
+  <div class="role">
+    <span class="label-sm">역할</span>
+    <div class="seg" role="group" aria-label="역할 선택">
+      <button type="button" id="roleHeadBtn" data-role="부서장">부서장</button>
+      <button type="button" id="roleSchedBtn" data-role="일정담당">일정담당</button>
+    </div>
+  </div>
+  <div class="sync">
+    <span class="sync-info" id="syncInfo">연결 중…</span>
+    <button type="button" class="btn" id="refreshBtn">새로고침</button>
+  </div>
+</header>
+<div class="banner" id="modeBanner" hidden></div>
+
+<main>
+  <!-- ===== 화면 2: 일정 확정 ===== -->
+  <section id="tabPlan">
+    <div class="daybar">
+      <span class="day-title" id="dayTitle"></span>
+      <button type="button" class="btn sm" id="prevDay" aria-label="이전 날">◀</button>
+      <input type="date" id="dayPicker" aria-label="날짜 선택">
+      <button type="button" class="btn sm" id="nextDay" aria-label="다음 날">▶</button>
+      <button type="button" class="btn sm" id="todayBtn">오늘</button>
+      <button type="button" class="btn sm" id="tomorrowBtn">내일</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="quickAddReport">+ 이 날짜에 보고 추가</button>
+      <button type="button" class="btn" id="quickAddEvent">+ 고정 일정 추가</button>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="board">
+      <aside class="col">
+        <div class="col-head"><h3>미배치 보고</h3><span class="count" id="unplacedCount"></span></div>
+        <div class="side" id="unplaced"></div>
+      </aside>
+      <div class="col">
+        <div class="col-head"><h3>시간표 09:00–18:00</h3><span class="count" id="tlLegend">10분 단위</span></div>
+        <div class="tl-wrap">
+          <div class="tl" id="timeline"></div>
+        </div>
+        <p class="tl-hint" id="tlHint"></p>
+      </div>
+      <aside class="col">
+        <div class="col-head"><h3>결재판 (비대면)</h3><span class="count" id="boardCount"></span></div>
+        <div class="side" id="board"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===== 화면 1: 보고 접수 ===== -->
+  <section id="tabIntake" hidden>
+    <div class="intake">
+      <div class="panel">
+        <h2>보고 건 <span class="edit-flag" id="rfEditFlag" hidden>수정 중</span></h2>
+        <form class="form" id="reportForm" novalidate>
+          <div class="field w2"><label for="rfTitle">업무명<span class="req">*</span></label><input id="rfTitle" autocomplete="off" placeholder="약칭 사용 가능"></div>
+          <div class="field"><label for="rfDept">부서<span class="req">*</span></label><input id="rfDept" autocomplete="off" list="deptList"></div>
+          <div class="field"><label for="rfReporter">보고자</label><input id="rfReporter" autocomplete="off"></div>
+          <div class="field w2"><span class="lbl">보고 유형<span class="req" style="color:var(--seal)">*</span></span>
+            <div class="radio-row">
+              <label><input type="radio" name="rfType" id="rfTypeFace" value="대면" checked> 대면 (결재)</label>
+              <label><input type="radio" name="rfType" id="rfTypeBoard" value="비대면"> 비대면 (참고)</label>
+            </div>
+          </div>
+          <div class="field"><label for="rfDuration">예상 소요 시간<span class="req" id="rfDurReq">*</span></label>
+            <select id="rfDuration"><option value="10">10분</option><option value="20">20분</option><option value="30">30분</option></select>
+          </div>
+          <div class="field"><label for="rfDate">보고 날짜<span class="req">*</span></label><input type="date" id="rfDate"></div>
+          <div class="field"><label for="rfDeadline">업무 기한</label><input type="date" id="rfDeadline"></div>
+          <div class="field w4"><label for="rfNote">비고</label><textarea id="rfNote" rows="2" placeholder="세부 내용, 변경 요청 사유 등"></textarea></div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="rfSubmit">보고 건 추가</button>
+            <button type="button" class="btn" id="rfCancel" hidden>수정 취소</button>
+            <span class="form-msg" id="rfMsg"></span>
+          </div>
+        </form>
+        <datalist id="deptList"></datalist>
+
+        <div class="filters">
+          <span class="label-sm">필터</span>
+          <input type="date" id="lfDate" aria-label="날짜 필터">
+          <button type="button" class="btn sm" id="lfAllDates">전체 날짜</button>
+          <select id="lfStatus" aria-label="상태 필터">
+            <option value="">모든 상태</option>
+            <option>대기</option><option>배치됨</option><option>확정</option><option>변경 요청</option><option>완료</option><option>결재판</option><option>확인 완료</option>
+          </select>
+          <span class="hint" id="lfCount"></span>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>보고 날짜</th><th>업무명</th><th>부서 · 보고자</th><th>유형</th><th>소요</th><th>시간</th><th>상태</th><th>기한</th><th>비고</th><th></th></tr></thead>
+          <tbody id="reportRows"></tbody>
+        </table></div>
+      </div>
+
+      <div class="panel">
+        <h2>고정 일정 <span class="edit-flag" id="efEditFlag" hidden>수정 중</span></h2>
+        <form class="form" id="eventForm" novalidate>
+          <div class="field w4"><label for="efName">일정명<span class="req">*</span></label><input id="efName" autocomplete="off" placeholder="예: ○○위원회"></div>
+          <div class="field w2"><label for="efDate">날짜<span class="req">*</span></label><input type="date" id="efDate"></div>
+          <div class="field"><label for="efStart">시작<span class="req">*</span></label><select id="efStart"></select></div>
+          <div class="field"><label for="efEnd">종료<span class="req">*</span></label><select id="efEnd"></select></div>
+          <div class="field w4"><label for="efNote">비고</label><input id="efNote" autocomplete="off"></div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="efSubmit">고정 일정 추가</button>
+            <button type="button" class="btn" id="efCancel" hidden>수정 취소</button>
+            <span class="form-msg" id="efMsg"></span>
+          </div>
+        </form>
+        <div class="filters"><span class="label-sm">등록된 고정 일정</span><span class="hint" id="efCount"></span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>날짜</th><th>시간</th><th>일정명</th><th>비고</th><th></th></tr></thead>
+          <tbody id="eventRows"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="drawerScrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-label="보고 상세">
+  <div class="dr-head"><h2 id="drTitle"></h2><button type="button" class="btn sm" id="drClose">닫기</button></div>
+  <div id="drBody"></div>
+  <div class="act-group">
+    <h4>비고 <span id="drNoteState"></span></h4>
+    <textarea id="drNote" aria-label="비고"></textarea>
+    <div class="act-row"><button type="button" class="btn primary sm" id="drNoteSave">비고 저장</button></div>
+  </div>
+</aside>
+
+<div class="scrim top" id="dlgScrim" hidden></div>
+<div class="dialog" id="dialog" role="alertdialog" aria-labelledby="dlgTitle" hidden>
+  <h3 id="dlgTitle">겹침 경고</h3>
+  <div id="dlgBody"></div>
+  <div class="acts">
+    <button type="button" class="btn" id="dlgCancel">취소</button>
+    <button type="button" class="btn warn" id="dlgOk">그래도 배치</button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+  // ---------- constants ----------
+  const S = { WAIT: '대기', PLACED: '배치됨', CONFIRMED: '확정', CHANGE: '변경 요청', DONE: '완료', BOARD: '결재판', CHECKED: '확인 완료' };
+  const HEAD = '부서장', SCHED = '일정담당';
+  const DAY_START = 540, DAY_END = 1080, LUNCH_S = 720, LUNCH_E = 780, WORK_MIN = 480;
+  const OCCUPYING = [S.PLACED, S.CONFIRMED, S.DONE];
+  const ON_TIMELINE = [S.PLACED, S.CONFIRMED, S.CHANGE, S.DONE];
+
+  // ---------- small helpers ----------
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const toMin = (hm) => { const [h, m] = String(hm).split(':').map(Number); return h * 60 + m; };
+  const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  const ymd = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return ymd(new Date(y, m - 1, d + n)); };
+  const today = () => ymd(new Date());
+  const tomorrow = () => addDays(today(), 1);
+  const dayLabel = (s) => { const [y, m, d] = s.split('-').map(Number); const w = '일월화수목금토'[new Date(y, m - 1, d).getDay()]; return `${m}월 ${d}일 (${w})`; };
+  const shortDate = (s) => { if (!s) return ''; const [, m, d] = s.split('-').map(Number); return `${m}/${d}`; };
+  const clock = (d) => d ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0') : '';
+  const stamp = () => { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()} ${clock(d).slice(0, 5)}`; };
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^a-zA-Z0-9-]/g, '');
+  const stCls = (s) => 'st-' + String(s).replace(/\s/g, '');
+  const pill = (s) => `<span class="pill ${stCls(s)}">${esc(s)}</span>`;
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+  };
+  const fmtMin = (n) => { const h = Math.floor(n / 60), m = n % 60; return h ? (m ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`; };
+
+  // ---------- state ----------
+  const state = {
+    reports: [], events: [],
+    role: store.get('rsm-role') === HEAD ? HEAD : SCHED,
+    tab: store.get('rsm-tab') === 'intake' ? 'intake' : 'plan',
+    date: tomorrow(),
+    mode: 'loading', lastSync: null, lastSave: null,
+    openId: null, pending: null,
+    editReportId: null, editEventId: null,
+    armedDelete: null, lfDate: '', lfStatus: '',
+  };
+  const isSched = () => state.role === SCHED;
+  const isHead = () => state.role === HEAD;
+  const findReport = (id) => state.reports.find((r) => r.id === id);
+
+  // ---------- data layer ----------
+  // 서버(server.ps1)의 /api 에 저장합니다. 두 PC가 같은 서버 주소로 접속하면 같은 내용을 봅니다.
+  function listFor(col) { return col === 'reports' ? state.reports : state.events; }
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method, cache: 'no-store',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+  function onWriteError() {
+    state.mode = 'offline'; renderChrome();
+    toast('저장하지 못했습니다. 서버 창이 켜져 있는지 확인하세요.');
+  }
+  async function put(col, obj) {
+    const list = listFor(col);
+    const i = list.findIndex((x) => x.id === obj.id);
+    if (i >= 0) list[i] = obj; else list.push(obj);
+    renderData();
+    try {
+      await api('PUT', `/api/${col}/${encodeURIComponent(obj.id)}`, obj);
+      state.mode = 'shared'; state.lastSave = new Date();
+      renderChrome();
+      return true;
+    } catch (e) { onWriteError(); await refresh(true); return false; }
+  }
+  async function del(col, id) {
+    const list = listFor(col);
+    const i = list.findIndex((x) => x.id === id);
+    if (i >= 0) list.splice(i, 1);
+    renderData();
+    try {
+      await api('DELETE', `/api/${col}/${encodeURIComponent(id)}`);
+      state.mode = 'shared'; state.lastSave = new Date(); renderChrome();
+    } catch (e) { onWriteError(); await refresh(true); }
+  }
+  async function refresh(quiet) {
+    try {
+      const d = await api('GET', '/api/data');
+      state.reports = Array.isArray(d.reports) ? d.reports : [];
+      state.events = Array.isArray(d.events) ? d.events : [];
+      state.lastSync = new Date(); state.mode = 'shared';
+    } catch (e) {
+      state.mode = 'offline';
+      if (!quiet) toast('서버에 연결하지 못했습니다. 서버 창이 켜져 있는지 확인하세요.');
+    }
+    renderAll();
+    return state.mode === 'shared';
+  }
+
+  async function saveReport(r) {
+    const next = { ...r, updatedAt: new Date().toISOString(), updatedBy: state.role };
+    return put('reports', next);
+  }
+
+  // ---------- scheduling logic ----------
+  function facePlaced(date) {
+    return state.reports.filter((r) => r.date === date && r.type === '대면' && r.startTime && ON_TIMELINE.includes(r.status));
+  }
+  function conflictsFor(r, start, date) {
+    const s = toMin(start), e = s + Number(r.duration || 0), out = [];
+    if (s < DAY_START || e > DAY_END) out.push(`근무 시간(09:00~18:00)을 벗어납니다 (${hm(s)}~${hm(e)})`);
+    if (s < LUNCH_E && e > LUNCH_S) out.push('점심시간(12:00~13:00)과 겹칩니다');
+    state.events.filter((ev) => ev.date === date).forEach((ev) => {
+      if (s < toMin(ev.endTime) && e > toMin(ev.startTime)) out.push(`고정 일정 「${ev.name}」 ${ev.startTime}~${ev.endTime}과 겹칩니다`);
+    });
+    state.reports.filter((o) => o.id !== r.id && o.date === date && o.type === '대면' && o.startTime && OCCUPYING.includes(o.status)).forEach((o) => {
+      const os = toMin(o.startTime), oe = os + Number(o.duration);
+      if (s < oe && e > os) out.push(`다른 대면 보고 「${o.title}」(${o.department}) ${o.startTime}~${hm(oe)}와 겹칩니다`);
+    });
+    return out;
+  }
+  function firstFree(r, date) {
+    for (let m = DAY_START; m + Number(r.duration || 10) <= DAY_END; m += 10) {
+      if (!conflictsFor(r, hm(m), date).length) return hm(m);
+    }
+    return '09:00';
+  }
+  function fixedMinutes(date) {
+    const iv = state.events.filter((e) => e.date === date)
+      .map((e) => [Math.max(DAY_START, toMin(e.startTime)), Math.min(DAY_END, toMin(e.endTime))])
+      .filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    const merged = [];
+    for (const [a, b] of iv) { const last = merged[merged.length - 1]; if (last && a <= last[1]) last[1] = Math.max(last[1], b); else merged.push([a, b]); }
+    return merged.reduce((t, [a, b]) => t + (b - a) - Math.max(0, Math.min(b, LUNCH_E) - Math.max(a, LUNCH_S)), 0);
+  }
+  function timeOptions(selected, from = 480, to = 1130) {
+    let h = '';
+    for (let m = from; m <= to; m += 10) {
+      const v = hm(m), out = m < DAY_START || m >= DAY_END, lunch = m >= LUNCH_S && m < LUNCH_E;
+      h += `<option value="${v}"${v === selected ? ' selected' : ''}>${v}${out ? ' · 근무외' : lunch ? ' · 점심' : ''}</option>`;
+    }
+    return h;
+  }
+
+  function requestPlace(id, start) {
+    if (!isSched()) return;
+    const r = findReport(id);
+    if (!r || r.type !== '대면') return;
+    const c = conflictsFor(r, start, r.date);
+    if (!c.length) { commitPlace(id, start); return; }
+    state.pending = { id, start };
+    $('dlgBody').innerHTML = `<p style="margin:0 0 6px">「${esc(r.title)}」을(를) <b class="mono">${start}~${hm(toMin(start) + Number(r.duration))}</b>에 배치하면:</p><ul>${c.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+    $('dlgScrim').hidden = false; $('dialog').hidden = false; $('dlgCancel').focus();
+  }
+  function closeDialog() { state.pending = null; $('dlgScrim').hidden = true; $('dialog').hidden = true; }
+  async function commitPlace(id, start) {
+    const r = findReport(id); if (!r) return;
+    const ok = await saveReport({ ...r, startTime: start, status: S.PLACED });
+    if (ok) toast(`${start}에 배치했습니다`);
+  }
+  async function setStatus(id, status, extra = {}) {
+    const r = findReport(id); if (!r) return;
+    await saveReport({ ...r, ...extra, status });
+  }
+
+  // ---------- rendering: chrome ----------
+  function renderChrome() {
+    $('tabPlanBtn').setAttribute('aria-pressed', state.tab === 'plan');
+    $('tabIntakeBtn').setAttribute('aria-pressed', state.tab === 'intake');
+    $('tabPlan').hidden = state.tab !== 'plan';
+    $('tabIntake').hidden = state.tab !== 'intake';
+    $('roleHeadBtn').setAttribute('aria-pressed', isHead());
+    $('roleSchedBtn').setAttribute('aria-pressed', isSched());
+    const parts = [];
+    if (state.mode === 'loading') parts.push('서버 연결 중…');
+    else {
+      if (state.lastSync) parts.push('불러옴 ' + clock(state.lastSync));
+      if (state.lastSave) parts.push('마지막 저장 ' + clock(state.lastSave));
+    }
+    $('syncInfo').textContent = parts.join(' · ');
+    const b = $('modeBanner');
+    if (state.mode === 'offline') { b.hidden = false; b.textContent = '서버에 연결되지 않았습니다. 서버 PC에서 start.bat 창이 켜져 있는지 확인한 뒤 「새로고침」을 누르세요. 연결 전에는 저장되지 않습니다.'; }
+    else b.hidden = true;
+  }
+
+  // ---------- rendering: plan ----------
+  function renderSummary() {
+    const D = state.date;
+    const placed = facePlaced(D);
+    const faceMin = placed.reduce((t, r) => t + Number(r.duration || 0), 0);
+    const boardCount = state.reports.filter((r) => r.date === D && r.type === '비대면').length;
+    const fixMin = fixedMinutes(D);
+    const personal = Math.max(0, WORK_MIN - fixMin - faceMin);
+    const faceAll = state.reports.filter((r) => r.date === D && r.type === '대면');
+    const confirmed = faceAll.filter((r) => r.status === S.CONFIRMED || r.status === S.DONE).length;
+    const unplaced = faceAll.filter((r) => !r.startTime || r.status === S.WAIT).length;
+    const changes = faceAll.filter((r) => r.status === S.CHANGE).length;
+    const allDone = faceAll.length > 0 && confirmed === faceAll.length;
+    let progressNote = '대면 보고 없음';
+    if (faceAll.length) progressNote = allDone ? '내일 일정 마무리' : [unplaced && `미배치 ${unplaced}건`, changes && `변경 요청 ${changes}건`, (faceAll.length - confirmed - unplaced - changes) > 0 && `확정 대기 ${faceAll.length - confirmed - unplaced - changes}건`].filter(Boolean).join(' · ');
+    if (allDone && D !== tomorrow()) progressNote = '모든 대면 보고 확정';
+    $('summary').innerHTML = `
+      <div class="metric"><div class="k">대면 보고</div><div class="v" id="mFaceCount">${placed.length}<small>건</small> · <span id="mFaceMin">${faceMin}</span><small>분</small></div><div class="s">시간표에 배치된 결재 보고</div></div>
+      <div class="metric"><div class="k">비대면 보고</div><div class="v" id="mBoardCount">${boardCount}<small>건</small></div><div class="s">결재판으로 처리</div></div>
+      <div class="metric"><div class="k">고정 일정</div><div class="v" id="mFixedMin">${fixMin}<small>분</small></div><div class="s">위원회 등 (점심 제외)</div></div>
+      <div class="metric focus"><div class="k">개인 업무 가능 시간</div><div class="v" id="mPersonal">${personal}<small>분</small></div><div class="s">${fmtMin(personal)} · 480 − ${fixMin} − ${faceMin}</div></div>
+      <div class="metric ${allDone ? 'ok' : faceAll.length ? 'pending' : ''}"><div class="k">확정 진행</div><div class="v">${confirmed}<small>/ ${faceAll.length}</small></div><div class="s">${esc(progressNote)}</div></div>`;
+  }
+
+  function cardHTML(r) {
+    const face = r.type === '대면';
+    const sched = isSched();
+    const meta = [esc(r.department), r.reporter && esc(r.reporter), face && `<span class="mono">${esc(r.duration)}분</span>`, r.deadline && `기한 ${shortDate(r.deadline)}`].filter(Boolean).join('<span aria-hidden="true">·</span>');
+    let actions = '';
+    if (face && r.status !== S.DONE) {
+      const sel = r.startTime && r.status === S.CHANGE ? r.startTime : firstFree(r, r.date);
+      actions = `<div class="row">
+        <select class="place-time" data-id="${esc(r.id)}" aria-label="시작 시간" ${sched ? '' : 'disabled'}>${timeOptions(sel)}</select>
+        <button type="button" class="btn primary sm" data-act="place" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>${r.status === S.CHANGE ? '재배치' : '배치'}</button>
+        <button type="button" class="btn sm" data-act="toboard" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'} title="참고 보고로 전환해 결재판으로 보냅니다">결재판으로</button>
+      </div>`;
+    } else if (!face && r.status === S.WAIT) {
+      actions = `<div class="row"><button type="button" class="btn primary sm" data-act="toboard" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>결재판으로 이동</button></div>`;
+    }
+    const lastChange = r.status === S.CHANGE && r.note ? r.note.split('\n').filter((l) => l.startsWith('[변경 요청')).pop() : '';
+    return `<div class="card ${r.status === S.CHANGE ? 'change' : ''} ${face && sched ? 'draggable' : ''}" ${face && sched ? 'draggable="true"' : ''} data-drag="${esc(r.id)}">
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:8px"><span class="ttl" data-open="${esc(r.id)}" tabindex="0" role="button">${esc(r.title)}</span>${pill(r.status)}</div>
+      <div class="meta"><span class="type-tag">${face ? '대면' : '비대면'}</span>${meta}</div>
+      ${lastChange ? `<div class="note-preview">${esc(lastChange)}</div>` : ''}
+      ${actions}
+    </div>`;
+  }
+
+  function renderUnplaced() {
+    const D = state.date;
+    const keep = {};
+    document.querySelectorAll('#unplaced select.place-time').forEach((s) => { keep[s.dataset.id] = s.value; });
+    const list = state.reports.filter((r) => r.date === D && (
+      (r.type === '대면' && (r.status === S.WAIT || r.status === S.CHANGE || (!r.startTime && r.status !== S.DONE))) ||
+      (r.type === '비대면' && r.status === S.WAIT)));
+    const change = list.filter((r) => r.status === S.CHANGE);
+    const face = list.filter((r) => r.type === '대면' && r.status !== S.CHANGE);
+    const board = list.filter((r) => r.type === '비대면');
+    const byDeadline = (a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999');
+    let h = '';
+    if (change.length) h += `<div class="group-label">재배치 필요</div>` + change.map(cardHTML).join('');
+    if (face.length) h += `<div class="group-label">대면 (결재) · 시간 지정 필요</div>` + face.sort(byDeadline).map(cardHTML).join('');
+    if (board.length) h += `<div class="group-label">비대면 (참고) · 결재판으로</div>` + board.sort(byDeadline).map(cardHTML).join('');
+    if (!list.length) h = `<div class="empty">이 날짜에 배치할 보고가 없습니다.<br>「보고 접수」에서 보고 건을 추가하면 여기에 나타납니다.</div>`;
+    $('unplaced').innerHTML = h;
+    $('unplacedCount').textContent = list.length ? list.length + '건' : '';
+    document.querySelectorAll('#unplaced select.place-time').forEach((s) => { if (keep[s.dataset.id]) s.value = keep[s.dataset.id]; });
+  }
+
+  const px = (m) => ((m - DAY_START) / 10) * 22;
+  function renderTimeline() {
+    const D = state.date, sched = isSched(), head = isHead();
+    let h = '';
+    for (let m = DAY_START; m <= DAY_END; m += 60) h += `<div class="hour" style="top:${px(m)}px">${hm(m)}</div>`;
+    h += `<div class="blk fixed lunch" style="top:${px(LUNCH_S)}px;height:${px(LUNCH_E) - px(LUNCH_S)}px"><b>점심시간</b> <span class="mono">12:00–13:00</span> · 보고 불가</div>`;
+    state.events.filter((e) => e.date === D).forEach((e) => {
+      const s = Math.max(DAY_START, toMin(e.startTime)), en = Math.min(DAY_END, toMin(e.endTime));
+      if (en <= s) return;
+      h += `<div class="blk fixed" style="top:${px(s)}px;height:${px(en) - px(s)}px" title="${esc(e.note || '')}"><b>${esc(e.name)}</b> <span class="mono">${esc(e.startTime)}–${esc(e.endTime)}</span>${e.note ? ' · ' + esc(e.note) : ''}</div>`;
+    });
+    // lanes for overlapping reports
+    const placed = facePlaced(D).map((r) => ({ r, s: toMin(r.startTime), e: toMin(r.startTime) + Number(r.duration) })).sort((a, b) => a.s - b.s || a.e - b.e);
+    let cluster = [], clusterEnd = -1;
+    const flush = () => { const n = Math.max(1, ...cluster.map((x) => x.lane + 1)); cluster.forEach((x) => { x.lanes = n; }); cluster = []; };
+    for (const it of placed) {
+      if (it.s >= clusterEnd && cluster.length) flush();
+      const used = new Set(cluster.filter((x) => x.e > it.s).map((x) => x.lane));
+      let lane = 0; while (used.has(lane)) lane++;
+      it.lane = lane; cluster.push(it); clusterEnd = Math.max(clusterEnd, it.e);
+    }
+    if (cluster.length) flush();
+    for (const it of placed) {
+      const r = it.r;
+      const top = px(Math.max(DAY_START, Math.min(it.s, DAY_END - 10)));
+      const bottom = px(Math.min(DAY_END, Math.max(it.e, DAY_START + 10)));
+      const conf = r.status !== S.CHANGE ? conflictsFor(r, r.startTime, D) : [];
+      const cls = r.status === S.CONFIRMED ? 'confirmed' : r.status === S.CHANGE ? 'change' : r.status === S.DONE ? 'done' : '';
+      const w = 100 / it.lanes;
+      const canMove = sched && r.status !== S.DONE;
+      const acts = r.status === S.PLACED
+        ? `<span class="acts"><button type="button" class="btn sm seal" data-act="confirm" data-id="${esc(r.id)}" ${head ? '' : 'disabled'} title="${head ? '' : '부서장 모드에서만 확정할 수 있습니다'}">확정</button><button type="button" class="btn sm warn" data-act="change" data-id="${esc(r.id)}" ${head ? '' : 'disabled'} title="${head ? '' : '부서장 모드에서만 요청할 수 있습니다'}">변경 요청</button></span>`
+        : '';
+      h += `<div class="blk rep ${cls} ${conf.length ? 'conflict' : ''} ${canMove ? 'sched-drag' : ''}" ${canMove ? 'draggable="true"' : ''} data-drag="${esc(r.id)}" data-open="${esc(r.id)}"
+        style="top:${top + 1}px;height:${Math.max(20, bottom - top - 2)}px;left:calc(${w * it.lane}% + 4px);width:calc(${w}% - 8px)"
+        title="${esc(r.title)} · ${esc(r.department)} · ${r.startTime}~${hm(it.e)}${conf.length ? '\n⚠ ' + esc(conf.join('\n⚠ ')) : ''}">
+        <span class="t">${r.startTime}</span>
+        <span class="body"><span class="name">${esc(r.title)}</span>${it.e - it.s >= 20 ? `<span class="sub">${esc(r.department)}${r.reporter ? ' · ' + esc(r.reporter) : ''} · ${r.duration}분${r.status === S.CHANGE ? ' · 변경 요청' : ''}</span>` : ''}</span>
+        ${conf.length ? '<span class="warn-dot" aria-label="겹침">!</span>' : ''}
+        ${r.status === S.CONFIRMED ? '<span class="stamp">확정</span>' : r.status === S.DONE ? `<span class="pill ${stCls(S.DONE)}">완료</span>` : ''}
+        ${acts}
+      </div>`;
+    }
+    const anything = placed.length || state.events.some((e) => e.date === D);
+    if (!anything) h += `<div class="empty tl-empty">아직 배치된 보고와 고정 일정이 없습니다.<br>${sched ? '왼쪽 미배치 보고를 시간표로 끌어오거나, 시작 시간을 고른 뒤 「배치」를 누르세요.' : '일정담당이 배치하면 여기에 표시됩니다. 새로고침으로 최신 배치를 불러오세요.'}</div>`;
+    h += `<div class="drop-line" id="dropLine" hidden><span></span></div>`;
+    $('timeline').innerHTML = h;
+    $('tlHint').textContent = sched
+      ? '보고를 끌어 놓거나 시간을 골라 배치합니다. 겹치면 경고가 뜹니다. 블록을 누르면 상세가 열립니다.'
+      : '부서장 모드: 배치된 보고를 「확정」하거나 「변경 요청」하세요. 블록을 누르면 상세와 비고가 열립니다.';
+  }
+
+  function renderBoard() {
+    const D = state.date;
+    const list = state.reports.filter((r) => r.date === D && r.type === '비대면' && (r.status === S.BOARD || r.status === S.CHECKED))
+      .sort((a, b) => (a.status === S.CHECKED) - (b.status === S.CHECKED) || (a.deadline || '9999').localeCompare(b.deadline || '9999'));
+    const head = isHead(), sched = isSched();
+    $('boardCount').textContent = list.length ? `${list.filter((r) => r.status === S.CHECKED).length}/${list.length} 확인` : '';
+    $('board').innerHTML = list.length ? list.map((r) => `
+      <div class="card ${r.status === S.CHECKED ? 'checked' : ''}">
+        <div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:8px"><span class="ttl" data-open="${esc(r.id)}" tabindex="0" role="button">${esc(r.title)}</span>${pill(r.status)}</div>
+        <div class="meta">${[esc(r.department), r.reporter && esc(r.reporter), r.deadline && '기한 ' + shortDate(r.deadline)].filter(Boolean).join('<span aria-hidden="true">·</span>')}</div>
+        ${r.note ? `<div class="note-preview">${esc(r.note)}</div>` : ''}
+        <div class="row" style="justify-content:space-between">
+          <label class="check"><input type="checkbox" data-act="check" data-id="${esc(r.id)}" ${r.status === S.CHECKED ? 'checked' : ''} ${head ? '' : 'disabled'}> 확인 완료</label>
+          ${r.status === S.BOARD ? `<button type="button" class="btn sm" data-act="unboard" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>대기로</button>` : ''}
+        </div>
+      </div>`).join('') : `<div class="empty">결재판이 비어 있습니다.<br>참고 보고는 「결재판으로 이동」을 누르면 여기에 모입니다.</div>`;
+  }
+
+  function renderPlan() {
+    $('dayTitle').innerHTML = esc(dayLabel(state.date)) + (state.date === today() ? '<span class="day-rel">오늘</span>' : state.date === tomorrow() ? '<span class="day-rel">내일</span>' : '');
+    $('dayPicker').value = state.date;
+    renderSummary(); renderUnplaced(); renderTimeline(); renderBoard();
+  }
+
+  // ---------- rendering: intake ----------
+  function renderIntake() {
+    const depts = [...new Set(state.reports.map((r) => r.department).filter(Boolean))].sort();
+    $('deptList').innerHTML = depts.map((d) => `<option value="${esc(d)}">`).join('');
+    $('lfDate').value = state.lfDate; $('lfStatus').value = state.lfStatus;
+    const rows = state.reports.filter((r) => (!state.lfDate || r.date === state.lfDate) && (!state.lfStatus || r.status === state.lfStatus))
+      .sort((a, b) => b.date.localeCompare(a.date) || (a.startTime || '99').localeCompare(b.startTime || '99') || a.title.localeCompare(b.title));
+    $('lfCount').textContent = `${rows.length}건`;
+    $('reportRows').innerHTML = rows.length ? rows.map((r) => `
+      <tr class="${state.editReportId === r.id ? 'editing' : ''} ${r.date < today() ? 'past' : ''}">
+        <td class="mono">${shortDate(r.date)}</td>
+        <td><span class="ttl" data-open="${esc(r.id)}" style="cursor:pointer;font-weight:600">${esc(r.title)}</span></td>
+        <td>${esc(r.department)}${r.reporter ? '<br><span class="hint">' + esc(r.reporter) + '</span>' : ''}</td>
+        <td>${esc(r.type)}</td>
+        <td class="num">${r.type === '대면' ? esc(r.duration) + '분' : '–'}</td>
+        <td class="mono">${r.startTime && r.type === '대면' ? esc(r.startTime) : '–'}</td>
+        <td>${pill(r.status)}</td>
+        <td class="mono">${shortDate(r.deadline) || '–'}</td>
+        <td><div class="note">${esc(r.note || '')}</div></td>
+        <td><div class="row-acts"><button type="button" class="btn sm" data-act="editReport" data-id="${esc(r.id)}">수정</button>
+          <button type="button" class="btn sm danger ${state.armedDelete === r.id ? 'armed' : ''}" data-act="delReport" data-id="${esc(r.id)}">${state.armedDelete === r.id ? '삭제 확인' : '삭제'}</button></div></td>
+      </tr>`).join('') : `<tr><td colspan="10" class="hint" style="text-align:center;padding:18px">${state.reports.length ? '조건에 맞는 보고 건이 없습니다.' : '아직 등록된 보고 건이 없습니다. 위 양식으로 첫 보고 건을 추가하세요.'}</td></tr>`;
+
+    const evs = [...state.events].sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+    $('efCount').textContent = `${evs.length}건`;
+    $('eventRows').innerHTML = evs.length ? evs.map((e) => `
+      <tr class="${state.editEventId === e.id ? 'editing' : ''} ${e.date < today() ? 'past' : ''}">
+        <td class="mono">${shortDate(e.date)}</td>
+        <td class="mono">${esc(e.startTime)}–${esc(e.endTime)}</td>
+        <td style="font-weight:600">${esc(e.name)}</td>
+        <td><div class="note">${esc(e.note || '')}</div></td>
+        <td><div class="row-acts"><button type="button" class="btn sm" data-act="editEvent" data-id="${esc(e.id)}">수정</button>
+          <button type="button" class="btn sm danger ${state.armedDelete === e.id ? 'armed' : ''}" data-act="delEvent" data-id="${esc(e.id)}">${state.armedDelete === e.id ? '삭제 확인' : '삭제'}</button></div></td>
+      </tr>`).join('') : `<tr><td colspan="5" class="hint" style="text-align:center;padding:18px">등록된 고정 일정이 없습니다. 위원회 등 고정 일정을 추가하세요.</td></tr>`;
+  }
+
+  // ---------- drawer ----------
+  let noteDirty = false;
+  function openDrawer(id) {
+    const r = findReport(id); if (!r) return;
+    state.openId = id; noteDirty = false;
+    $('drNote').value = r.note || '';
+    $('drNoteState').textContent = '';
+    $('drawer').hidden = false; $('drawerScrim').hidden = false;
+    renderDrawer();
+    $('drClose').focus();
+  }
+  function closeDrawer() { state.openId = null; $('drawer').hidden = true; $('drawerScrim').hidden = true; }
+  function renderDrawer() {
+    if (!state.openId) return;
+    const r = findReport(state.openId);
+    if (!r) { closeDrawer(); return; }
+    const sched = isSched(), head = isHead(), face = r.type === '대면';
+    $('drTitle').textContent = r.title;
+    const end = face && r.startTime ? hm(toMin(r.startTime) + Number(r.duration)) : '';
+    const conf = face && r.startTime && OCCUPYING.includes(r.status) ? conflictsFor(r, r.startTime, r.date) : [];
+    let h = `<dl class="kv">
+      <dt>상태</dt><dd>${pill(r.status)}</dd>
+      <dt>유형</dt><dd>${esc(r.type)} ${face ? '(결재)' : '(참고)'}</dd>
+      <dt>부서</dt><dd>${esc(r.department)}</dd>
+      <dt>보고자</dt><dd>${esc(r.reporter || '–')}</dd>
+      <dt>보고 날짜</dt><dd>${esc(dayLabel(r.date))}</dd>
+      ${face ? `<dt>시간</dt><dd class="mono">${r.startTime ? `${esc(r.startTime)}–${end}` : '미배치'} · ${esc(r.duration)}분</dd>` : ''}
+      <dt>업무 기한</dt><dd>${r.deadline ? esc(dayLabel(r.deadline)) : '–'}</dd>
+      <dt>마지막 수정</dt><dd class="hint">${r.updatedAt ? esc(r.updatedBy || '') + ' · ' + esc(new Date(r.updatedAt).toLocaleString('ko-KR')) : '–'}</dd>
+    </dl>`;
+    if (conf.length) h += `<div class="warnbox"><b>겹침 경고</b><ul>${conf.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
+
+    // 일정담당 actions
+    let sa = '';
+    if (face && r.status !== S.DONE) {
+      sa += `<div class="act-row"><select id="drTime" aria-label="시작 시간" ${sched ? '' : 'disabled'}>${timeOptions(r.startTime || firstFree(r, r.date))}</select>
+        <button type="button" class="btn primary sm" data-act="drPlace" ${sched ? '' : 'disabled'}>${r.startTime && r.status !== S.WAIT ? '이 시간으로 재배치' : '이 시간에 배치'}</button>
+        ${r.startTime && r.status !== S.WAIT ? `<button type="button" class="btn sm" data-act="unplace" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>배치 취소</button>` : ''}</div>`;
+    }
+    if (!face && r.status === S.WAIT) sa += `<div class="act-row"><button type="button" class="btn primary sm" data-act="toboard" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>결재판으로 이동</button></div>`;
+    if (!face && r.status === S.BOARD) sa += `<div class="act-row"><button type="button" class="btn sm" data-act="unboard" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>결재판에서 빼기 (대기로)</button></div>`;
+    sa += `<div class="act-row"><button type="button" class="btn sm" data-act="editReport" data-id="${esc(r.id)}">접수 화면에서 수정</button>
+      <button type="button" class="btn sm danger ${state.armedDelete === r.id ? 'armed' : ''}" data-act="delReport" data-id="${esc(r.id)}" ${sched ? '' : 'disabled'}>${state.armedDelete === r.id ? '삭제 확인' : '삭제'}</button></div>`;
+    h += `<div class="act-group ${sched ? '' : 'inactive'}"><h4>일정담당 <span>${sched ? '현재 역할' : '일정담당 모드에서 사용'}</span></h4>${sa}</div>`;
+
+    // 부서장 actions
+    let ha = '';
+    if (face) {
+      ha += `<div class="act-row">
+        <button type="button" class="btn seal sm" data-act="confirm" data-id="${esc(r.id)}" ${head && r.status === S.PLACED ? '' : 'disabled'}>확정</button>
+        ${r.status === S.CONFIRMED ? `<button type="button" class="btn sm" data-act="done" data-id="${esc(r.id)}">보고 종료 (완료)</button>` : ''}
+      </div>
+      <div class="act-row"><input type="text" id="drReason" placeholder="변경 요청 사유 (비고에 기록)" ${head && (r.status === S.PLACED || r.status === S.CONFIRMED) ? '' : 'disabled'}>
+        <button type="button" class="btn warn sm" data-act="drChange" ${head && (r.status === S.PLACED || r.status === S.CONFIRMED) ? '' : 'disabled'}>변경 요청</button></div>`;
+    } else {
+      ha += `<div class="act-row"><label class="check"><input type="checkbox" data-act="check" data-id="${esc(r.id)}" ${r.status === S.CHECKED ? 'checked' : ''} ${head && (r.status === S.BOARD || r.status === S.CHECKED) ? '' : 'disabled'}> 확인 완료</label>
+        ${r.status === S.WAIT ? '<span class="hint">결재판으로 옮긴 뒤 확인할 수 있습니다</span>' : ''}</div>`;
+    }
+    h += `<div class="act-group ${head ? '' : 'inactive'}"><h4>부서장 <span>${head ? '현재 역할' : '부서장 모드에서 사용'}</span></h4>${ha}</div>`;
+
+    const keepReason = $('drReason') ? $('drReason').value : '';
+    const keepTime = $('drTime') && document.activeElement === $('drTime') ? $('drTime').value : null;
+    $('drBody').innerHTML = h;
+    $('drBody').style.display = 'flex'; $('drBody').style.flexDirection = 'column'; $('drBody').style.gap = '12px';
+    if ($('drReason')) $('drReason').value = keepReason;
+    if (keepTime && $('drTime')) $('drTime').value = keepTime;
+    if (!noteDirty && document.activeElement !== $('drNote')) $('drNote').value = r.note || '';
+  }
+
+  function renderData() {
+    renderPlan(); renderIntake(); renderDrawer();
+  }
+  function renderAll() { renderChrome(); renderData(); }
+
+  // ---------- toast ----------
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+  }
+
+  // ---------- forms ----------
+  function resetReportForm(date) {
+    state.editReportId = null;
+    $('reportForm').reset();
+    $('rfDate').value = date || state.date;
+    $('rfTypeFace').checked = true;
+    $('rfDuration').value = '10';
+    $('rfSubmit').textContent = '보고 건 추가';
+    $('rfCancel').hidden = true; $('rfEditFlag').hidden = true; $('rfMsg').textContent = '';
+    syncDurationField();
+  }
+  function syncDurationField() {
+    const face = $('rfTypeFace').checked;
+    $('rfDuration').disabled = !face; $('rfDurReq').hidden = !face;
+  }
+  function loadReportForm(id) {
+    const r = findReport(id); if (!r) return;
+    state.editReportId = id;
+    $('rfTitle').value = r.title || ''; $('rfDept').value = r.department || ''; $('rfReporter').value = r.reporter || '';
+    (r.type === '비대면' ? $('rfTypeBoard') : $('rfTypeFace')).checked = true;
+    $('rfDuration').value = String(r.duration || 10); $('rfDate').value = r.date || ''; $('rfDeadline').value = r.deadline || '';
+    $('rfNote').value = r.note || '';
+    $('rfSubmit').textContent = '수정 저장'; $('rfCancel').hidden = false; $('rfEditFlag').hidden = false; $('rfMsg').textContent = '';
+    syncDurationField();
+    setTab('intake'); closeDrawer();
+    $('rfTitle').focus();
+    renderIntake();
+  }
+  async function submitReport(ev) {
+    ev.preventDefault();
+    const title = $('rfTitle').value.trim(), department = $('rfDept').value.trim(), date = $('rfDate').value;
+    const type = $('rfTypeBoard').checked ? '비대면' : '대면';
+    const missing = [!title && '업무명', !department && '부서', !date && '보고 날짜'].filter(Boolean);
+    if (missing.length) { $('rfMsg').textContent = missing.join(', ') + '을(를) 입력하세요.'; return; }
+    const duration = type === '대면' ? Number($('rfDuration').value) : null;
+    const prev = state.editReportId ? findReport(state.editReportId) : null;
+    let status = S.WAIT, startTime = null;
+    if (prev) {
+      status = prev.status; startTime = prev.startTime || null;
+      if (prev.type !== type || prev.date !== date) { status = S.WAIT; startTime = null; }
+      else if (type === '대면' && prev.duration !== duration && prev.status === S.CONFIRMED) status = S.PLACED;
+    }
+    const r = {
+      id: prev ? prev.id : uid(), title, department, type, date, duration, startTime, status,
+      reporter: $('rfReporter').value.trim(), deadline: $('rfDeadline').value || '', note: $('rfNote').value.trim(),
+    };
+    const ok = await saveReport(r);
+    if (ok) { toast(prev ? '수정했습니다' : `「${title}」을(를) 추가했습니다`); const keepDate = date; resetReportForm(keepDate); renderIntake(); $('rfTitle').focus(); }
+  }
+
+  function initEventSelects() {
+    $('efStart').innerHTML = timeOptions('10:00', 480, 1140);
+    $('efEnd').innerHTML = timeOptions('12:00', 480, 1140);
+  }
+  function resetEventForm(date) {
+    state.editEventId = null;
+    $('eventForm').reset();
+    $('efDate').value = date || state.date;
+    $('efStart').value = '10:00'; $('efEnd').value = '12:00';
+    $('efSubmit').textContent = '고정 일정 추가'; $('efCancel').hidden = true; $('efEditFlag').hidden = true; $('efMsg').textContent = '';
+  }
+  function loadEventForm(id) {
+    const e = state.events.find((x) => x.id === id); if (!e) return;
+    state.editEventId = id;
+    $('efName').value = e.name; $('efDate').value = e.date; $('efStart').value = e.startTime; $('efEnd').value = e.endTime; $('efNote').value = e.note || '';
+    $('efSubmit').textContent = '수정 저장'; $('efCancel').hidden = false; $('efEditFlag').hidden = false; $('efMsg').textContent = '';
+    $('efName').focus(); renderIntake();
+  }
+  async function submitEvent(ev) {
+    ev.preventDefault();
+    const name = $('efName').value.trim(), date = $('efDate').value, startTime = $('efStart').value, endTime = $('efEnd').value;
+    if (!name || !date) { $('efMsg').textContent = [!name && '일정명', !date && '날짜'].filter(Boolean).join(', ') + '을(를) 입력하세요.'; return; }
+    if (toMin(endTime) <= toMin(startTime)) { $('efMsg').textContent = '종료 시간은 시작 시간보다 늦어야 합니다.'; return; }
+    const prev = state.editEventId;
+    const e = { id: prev || uid(), name, date, startTime, endTime, note: $('efNote').value.trim(), updatedAt: new Date().toISOString(), updatedBy: state.role };
+    const ok = await put('events', e);
+    if (ok) { toast(prev ? '고정 일정을 수정했습니다' : `「${name}」을(를) 추가했습니다`); resetEventForm(date); renderIntake(); }
+  }
+
+  // ---------- actions ----------
+  let armTimer = null;
+  function armDelete(id, run) {
+    if (state.armedDelete === id) { state.armedDelete = null; clearTimeout(armTimer); run(); return; }
+    state.armedDelete = id; renderIntake(); renderDrawer();
+    clearTimeout(armTimer); armTimer = setTimeout(() => { state.armedDelete = null; renderIntake(); renderDrawer(); }, 3500);
+  }
+
+  async function handleAction(act, id, el) {
+    const r = id ? findReport(id) : null;
+    switch (act) {
+      case 'place': {
+        const sel = document.querySelector(`#unplaced select.place-time[data-id="${CSS.escape(id)}"]`);
+        if (sel) requestPlace(id, sel.value);
+        break;
+      }
+      case 'drPlace': requestPlace(state.openId, $('drTime').value); break;
+      case 'unplace': if (isSched() && r) { await saveReport({ ...r, startTime: null, status: S.WAIT }); toast('배치를 취소했습니다'); } break;
+      case 'toboard': if (isSched() && r) { await saveReport({ ...r, type: '비대면', startTime: null, status: S.BOARD }); toast('결재판으로 옮겼습니다'); } break;
+      case 'unboard': if (isSched() && r) await setStatus(id, S.WAIT); break;
+      case 'confirm': if (isHead() && r && r.status === S.PLACED) { await setStatus(id, S.CONFIRMED); toast('확정했습니다'); } break;
+      case 'change':
+        if (isHead() && r) { openDrawer(id); setTimeout(() => $('drReason') && $('drReason').focus(), 0); }
+        break;
+      case 'drChange': {
+        const rr = findReport(state.openId); if (!isHead() || !rr) break;
+        const reason = $('drReason').value.trim();
+        const line = `[변경 요청 ${stamp()}] ${reason || '사유 미기재'}`;
+        const note = (rr.note ? rr.note + '\n' : '') + line;
+        await setStatus(rr.id, S.CHANGE, { note });
+        $('drReason').value = ''; noteDirty = false; $('drNote').value = note; renderDrawer();
+        toast('변경 요청을 보냈습니다');
+        break;
+      }
+      case 'done': if (r && r.status === S.CONFIRMED) { await setStatus(id, S.DONE); toast('보고 종료로 표시했습니다'); } break;
+      case 'check': if (isHead() && r) await setStatus(id, el.checked ? S.CHECKED : S.BOARD); else if (el) el.checked = !el.checked; break;
+      case 'editReport': loadReportForm(id); break;
+      case 'delReport': armDelete(id, async () => { if (state.editReportId === id) resetReportForm(); if (state.openId === id) closeDrawer(); await del('reports', id); toast('삭제했습니다'); }); break;
+      case 'editEvent': loadEventForm(id); break;
+      case 'delEvent': armDelete(id, async () => { if (state.editEventId === id) resetEventForm(); await del('events', id); toast('삭제했습니다'); }); break;
+    }
+  }
+
+  function setTab(t) { state.tab = t; store.set('rsm-tab', t); renderChrome(); }
+  function setRole(r) { state.role = r; store.set('rsm-role', r); renderAll(); toast(`${r} 모드로 전환했습니다`); }
+  function setDate(d) { if (!d) return; state.date = d; renderPlan(); }
+
+  // ---------- drag and drop ----------
+  let dragId = null, grabSlots = 0;
+  function slotFromEvent(e) {
+    const rect = $('timeline').getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    let m = DAY_START + Math.floor(y / 22) * 10 - grabSlots * 10;
+    return Math.max(480, Math.min(1130, m));
+  }
+
+  // ---------- bind ----------
+  function bind() {
+    document.addEventListener('click', (e) => {
+      const actEl = e.target.closest('[data-act]');
+      if (actEl && actEl.tagName !== 'INPUT') { e.stopPropagation(); if (!actEl.disabled) handleAction(actEl.dataset.act, actEl.dataset.id, actEl); return; }
+      const openEl = e.target.closest('[data-open]');
+      if (openEl && !e.target.closest('select')) openDrawer(openEl.dataset.open);
+    });
+    document.addEventListener('change', (e) => {
+      const el = e.target;
+      if (el.matches('input[type="checkbox"][data-act]')) handleAction(el.dataset.act, el.dataset.id, el);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { if (!$('dialog').hidden) closeDialog(); else if (state.openId) closeDrawer(); }
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-open][role="button"]')) { e.preventDefault(); openDrawer(e.target.dataset.open); }
+    });
+
+    $('tabPlanBtn').onclick = () => setTab('plan');
+    $('tabIntakeBtn').onclick = () => setTab('intake');
+    $('roleHeadBtn').onclick = () => setRole(HEAD);
+    $('roleSchedBtn').onclick = () => setRole(SCHED);
+    $('refreshBtn').onclick = async () => { await refresh(); toast('최신 내용을 불러왔습니다'); };
+
+    $('dayPicker').onchange = (e) => setDate(e.target.value);
+    $('prevDay').onclick = () => setDate(addDays(state.date, -1));
+    $('nextDay').onclick = () => setDate(addDays(state.date, 1));
+    $('todayBtn').onclick = () => setDate(today());
+    $('tomorrowBtn').onclick = () => setDate(tomorrow());
+    $('quickAddReport').onclick = () => { resetReportForm(state.date); setTab('intake'); $('rfTitle').focus(); };
+    $('quickAddEvent').onclick = () => { resetEventForm(state.date); setTab('intake'); $('efName').focus(); };
+
+    $('reportForm').addEventListener('submit', submitReport);
+    $('rfCancel').onclick = () => { resetReportForm(); renderIntake(); };
+    document.querySelectorAll('input[name="rfType"]').forEach((el) => el.addEventListener('change', syncDurationField));
+    $('eventForm').addEventListener('submit', submitEvent);
+    $('efCancel').onclick = () => { resetEventForm(); renderIntake(); };
+    $('lfDate').onchange = (e) => { state.lfDate = e.target.value; renderIntake(); };
+    $('lfAllDates').onclick = () => { state.lfDate = ''; renderIntake(); };
+    $('lfStatus').onchange = (e) => { state.lfStatus = e.target.value; renderIntake(); };
+
+    $('drClose').onclick = closeDrawer;
+    $('drawerScrim').onclick = closeDrawer;
+    $('drNote').addEventListener('input', () => { noteDirty = true; $('drNoteState').textContent = '저장 안 됨'; });
+    $('drNoteSave').onclick = async () => {
+      const r = findReport(state.openId); if (!r) return;
+      const ok = await saveReport({ ...r, note: $('drNote').value.trim() });
+      if (ok) { noteDirty = false; $('drNoteState').textContent = '저장됨'; toast('비고를 저장했습니다'); }
+    };
+    $('dlgCancel').onclick = closeDialog;
+    $('dlgScrim').onclick = closeDialog;
+    $('dlgOk').onclick = () => { const p = state.pending; closeDialog(); if (p) commitPlace(p.id, p.start); };
+
+    // drag & drop (일정담당)
+    document.addEventListener('dragstart', (e) => {
+      const el = e.target.closest && e.target.closest('[data-drag][draggable="true"]');
+      if (!el || !isSched()) return;
+      dragId = el.dataset.drag;
+      grabSlots = el.classList.contains('blk') ? Math.floor((e.clientY - el.getBoundingClientRect().top) / 22) : 0;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', dragId); } catch { /* ignore */ }
+    });
+    document.addEventListener('dragend', () => { dragId = null; $('timeline').classList.remove('dragover'); const l = $('dropLine'); if (l) l.hidden = true; });
+    const tl = $('timeline');
+    tl.addEventListener('dragover', (e) => {
+      if (!dragId) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      tl.classList.add('dragover');
+      const m = slotFromEvent(e), l = $('dropLine');
+      if (l) { l.hidden = false; l.style.top = Math.max(0, Math.min(px(DAY_END), px(m))) + 'px'; l.firstElementChild.textContent = hm(m); }
+    });
+    tl.addEventListener('dragleave', (e) => { if (!tl.contains(e.relatedTarget)) { tl.classList.remove('dragover'); const l = $('dropLine'); if (l) l.hidden = true; } });
+    tl.addEventListener('drop', (e) => {
+      if (!dragId) return;
+      e.preventDefault();
+      const id = dragId, m = slotFromEvent(e);
+      dragId = null; tl.classList.remove('dragover');
+      requestPlace(id, hm(m));
+    });
+  }
+
+  // ---------- boot ----------
+  async function init() {
+    bind(); initEventSelects(); resetReportForm(state.date); resetEventForm(state.date);
+    renderAll();
+    await refresh(true);
+    // 다른 창에서 돌아오면 최신 내용을 불러옵니다 (실시간 동기화는 하지 않음)
+    window.addEventListener('focus', () => { if ($('dialog').hidden) refresh(true); });
+  }
+  init();
+})();
+</script>
+</body>
+</html>
