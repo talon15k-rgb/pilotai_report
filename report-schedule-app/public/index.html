@@ -276,6 +276,9 @@ tr.past td { color: var(--muted); }
 .dialog ul { margin: 0; padding-left: 18px; }
 .dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .scrim.top { z-index: 50; }
+.dialog.gate { border-color: var(--line); }
+.dialog.gate h3 { color: var(--ink); }
+.dialog.gate input { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; background: var(--surface-2); width: 100%; }
 .toast {
   position: fixed; z-index: 60; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   background: var(--ink); color: var(--surface); padding: 8px 16px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow);
@@ -444,6 +447,14 @@ tr.past td { color: var(--muted); }
     <button type="button" class="btn warn" id="dlgOk">그래도 배치</button>
   </div>
 </div>
+<div class="scrim top" id="gateScrim" hidden></div>
+<form class="dialog gate" id="gate" hidden novalidate>
+  <h3>접속 코드</h3>
+  <p style="margin:0">이 보드는 접속 코드가 있어야 열립니다. 일정담당에게 받은 코드를 입력하세요. 이 PC에 기억됩니다.</p>
+  <input type="password" id="gateCode" autocomplete="current-password" aria-label="접속 코드">
+  <span class="form-msg" id="gateMsg"></span>
+  <div class="acts"><button type="submit" class="btn primary">열기</button></div>
+</form>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -494,20 +505,22 @@ tr.past td { color: var(--muted); }
   const findReport = (id) => state.reports.find((r) => r.id === id);
 
   // ---------- data layer ----------
-  // 서버(server.ps1)의 /api 에 저장합니다. 두 PC가 같은 서버 주소로 접속하면 같은 내용을 봅니다.
+  // /api 에 저장합니다. 로컬 실행판은 server.ps1, Vercel 배포판은 api/ 함수가 같은 주소로 응답합니다.
+  // Vercel에 ACCESS_CODE가 설정되어 있으면 접속 코드를 X-Access-Code 헤더로 보냅니다.
   function listFor(col) { return col === 'reports' ? state.reports : state.events; }
   async function api(method, path, body) {
-    const res = await fetch(path, {
-      method, cache: 'no-store',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const headers = {};
+    if (body) headers['Content-Type'] = 'application/json';
+    const code = store.get('rsm-code');
+    if (code) headers['X-Access-Code'] = code;
+    const res = await fetch(path, { method, cache: 'no-store', headers, body: body ? JSON.stringify(body) : undefined });
+    if (!res.ok) { const e = new Error('HTTP ' + res.status); e.status = res.status; throw e; }
     return res.json();
   }
-  function onWriteError() {
-    state.mode = 'offline'; renderChrome();
-    toast('저장하지 못했습니다. 서버 창이 켜져 있는지 확인하세요.');
+  function modeFor(e) { return e && e.status === 401 ? 'locked' : e && e.status === 503 ? 'nostorage' : 'offline'; }
+  function onWriteError(e) {
+    state.mode = modeFor(e); renderChrome();
+    if (state.mode === 'offline') toast('저장하지 못했습니다. 서버에 연결되어 있는지 확인하세요.');
   }
   async function put(col, obj) {
     const list = listFor(col);
@@ -519,7 +532,7 @@ tr.past td { color: var(--muted); }
       state.mode = 'shared'; state.lastSave = new Date();
       renderChrome();
       return true;
-    } catch (e) { onWriteError(); await refresh(true); return false; }
+    } catch (e) { onWriteError(e); await refresh(true); return false; }
   }
   async function del(col, id) {
     const list = listFor(col);
@@ -529,7 +542,7 @@ tr.past td { color: var(--muted); }
     try {
       await api('DELETE', `/api/${col}/${encodeURIComponent(id)}`);
       state.mode = 'shared'; state.lastSave = new Date(); renderChrome();
-    } catch (e) { onWriteError(); await refresh(true); }
+    } catch (e) { onWriteError(e); await refresh(true); }
   }
   async function refresh(quiet) {
     try {
@@ -538,8 +551,8 @@ tr.past td { color: var(--muted); }
       state.events = Array.isArray(d.events) ? d.events : [];
       state.lastSync = new Date(); state.mode = 'shared';
     } catch (e) {
-      state.mode = 'offline';
-      if (!quiet) toast('서버에 연결하지 못했습니다. 서버 창이 켜져 있는지 확인하세요.');
+      state.mode = modeFor(e);
+      if (!quiet && state.mode === 'offline') toast('서버에 연결하지 못했습니다. 잠시 후 다시 새로고침하세요.');
     }
     renderAll();
     return state.mode === 'shared';
@@ -627,8 +640,12 @@ tr.past td { color: var(--muted); }
     }
     $('syncInfo').textContent = parts.join(' · ');
     const b = $('modeBanner');
-    if (state.mode === 'offline') { b.hidden = false; b.textContent = '서버에 연결되지 않았습니다. 서버 PC에서 start.bat 창이 켜져 있는지 확인한 뒤 「새로고침」을 누르세요. 연결 전에는 저장되지 않습니다.'; }
+    if (state.mode === 'offline') { b.hidden = false; b.textContent = '서버에 연결되지 않았습니다. 로컬 실행판이면 서버 PC의 start.bat 창이 켜져 있는지 확인한 뒤 「새로고침」을 누르세요. 연결 전에는 저장되지 않습니다.'; }
+    else if (state.mode === 'nostorage') { b.hidden = false; b.textContent = '데이터 저장소가 연결되지 않았습니다. Vercel 프로젝트의 Storage 탭에서 Upstash Redis를 연결한 뒤 다시 배포하세요.'; }
     else b.hidden = true;
+    const locked = state.mode === 'locked';
+    if (locked && $('gate').hidden) { $('gate').hidden = false; $('gateScrim').hidden = false; $('gateCode').value = ''; $('gateCode').focus(); }
+    if (!locked) { $('gate').hidden = true; $('gateScrim').hidden = true; }
   }
 
   // ---------- rendering: plan ----------
@@ -1079,6 +1096,15 @@ tr.past td { color: var(--muted); }
     $('dlgCancel').onclick = closeDialog;
     $('dlgScrim').onclick = closeDialog;
     $('dlgOk').onclick = () => { const p = state.pending; closeDialog(); if (p) commitPlace(p.id, p.start); };
+    $('gate').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = $('gateCode').value.trim();
+      if (!code) { $('gateMsg').textContent = '접속 코드를 입력하세요.'; return; }
+      store.set('rsm-code', code);
+      $('gateMsg').textContent = '';
+      const ok = await refresh(true);
+      if (!ok && state.mode === 'locked') { $('gateMsg').textContent = '코드가 맞지 않습니다. 다시 확인해 주세요.'; $('gateCode').select(); }
+    });
 
     // drag & drop (일정담당)
     document.addEventListener('dragstart', (e) => {
